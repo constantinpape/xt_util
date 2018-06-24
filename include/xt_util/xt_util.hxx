@@ -223,16 +223,6 @@ namespace xt_util {
 
 
     template<typename COORD, typename F>
-    inline void for_each_coordinate(const COORD & shape, F && f, const bool c_order=true) {
-        if(c_order) {
-            for_each_coordinate_c(shape, f);
-        } else {
-            for_each_coordinate_f(shape, f);
-        }
-    }
-
-
-    template<typename COORD, typename F>
     inline void for_each_coordinate_c(const COORD & shape, F && f) {
         const unsigned dim = shape.size();
         xt::xindex coord(dim);
@@ -274,4 +264,12 @@ namespace xt_util {
     }
 
 
+    template<typename COORD, typename F>
+    inline void for_each_coordinate(const COORD & shape, F && f, const bool c_order=true) {
+        if(c_order) {
+            for_each_coordinate_c(shape, f);
+        } else {
+            for_each_coordinate_f(shape, f);
+        }
+    }
 }
