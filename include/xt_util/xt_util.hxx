@@ -233,6 +233,11 @@ namespace xt_util {
     }
 
 
+    //
+    // for each coordinate:
+    // iterate over single shape
+    //
+
     template<typename COORD, typename F>
     inline void for_each_coordinate_c(const COORD & shape, F && f) {
         const int dim = shape.size();
@@ -281,6 +286,64 @@ namespace xt_util {
             for_each_coordinate_c(shape, f);
         } else {
             for_each_coordinate_f(shape, f);
+        }
+    }
+
+
+    //
+    // for each coordinate:
+    // iterate between begin and end
+    //
+
+
+    template<typename COORD, typename F>
+    inline void for_each_coordinate_c(const COORD & begin, const COORD & end, F && f) {
+        const int dim = begin.size();
+        xt::xindex coord(dim);
+        std::copy(begin.begin(), begin.end(), coord.begin());
+
+        // C-Order: last dimension is the fastest moving one
+        for(int d = dim - 1; d >= 0;) {
+            f(coord);
+            for(d = dim - 1; d >= 0; --d) {
+                ++coord[d];
+                if(coord[d] < end[d]) {
+                    break;
+                } else {
+                    coord[d] = 0;
+                }
+            }
+        }
+    }
+
+
+    template<typename COORD, typename F>
+    inline void for_each_coordinate_f(const COORD & begin, const COORD & end, F && f) {
+        const int dim = begin.size();
+        xt::xindex coord(dim);
+        std::copy(begin.begin(), begin.end(), coord.begin());
+
+        // F-Order: last dimension is the fastest moving one
+        for(int d = 0; d < dim;) {
+            f(coord);
+            for(d = 0; d < dim; ++d) {
+                ++coord[d];
+                if(coord[d] < end[d]) {
+                    break;
+                } else {
+                    coord[d] = 0;
+                }
+            }
+        }
+    }
+
+
+    template<typename COORD, typename F>
+    inline void for_each_coordinate(const COORD & begin, const COORD & end, F && f, const bool c_order=true) {
+        if(c_order) {
+            for_each_coordinate_c(begin, end, f);
+        } else {
+            for_each_coordinate_f(begin, end, f);
         }
     }
 
