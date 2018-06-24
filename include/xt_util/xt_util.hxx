@@ -5,71 +5,40 @@
 #include "xtensor/xstrided_view.hpp"
 
 
-
-// TODO no more CamelCase
-
 namespace xt_util {
 
 
     // fill a xt::slice_vector for a roi from
     // the offset and shape of the roi
     template<class COORD>
-    inline void sliceFromRoi(xt::slice_vector & roiSlice,
-                             const COORD & offset,
-                             const COORD & shape) {
+    inline void slice_from_roi(xt::slice_vector & slice,
+                               const COORD & offset,
+                               const COORD & shape) {
         for(int d = 0; d < offset.size(); ++d) {
-            roiSlice.push_back(xt::range(offset[d], offset[d] + shape[d]));
+            slice.push_back(xt::range(offset[d], offset[d] + shape[d]));
         }
-    }
-
-
-    // TODO do we actually need this ???
-    // compute ...
-    template<class COORD>
-    inline std::size_t offsetAndStridesFromRoi(const COORD & outStrides,
-                                               const COORD & requestShape,
-                                               const COORD & offsetInRequest,
-                                               COORD & requestStrides) {
-        // first, calculate the flat offset
-        // -> sum( coordinate_offset * out_strides )
-        std::size_t flatOffset = 1;
-        for(int d = 0; d < outStrides.size(); ++d) {
-            flatOffset += (outStrides[d] * offsetInRequest[d]);
-        }
-
-        // TODO this depends on the laout type.....
-        // next, calculate the new strides
-        requestStrides.resize(requestShape.size());
-        for(int d = 0; d < requestShape.size(); ++d) {
-            requestStrides[d] = std::accumulate(requestShape.rbegin(),
-                                                requestShape.rbegin() + d, 1,
-                                                std::multiplies<std::size_t>());
-        }
-        std::reverse(requestStrides.begin(), requestStrides.end());
-
-        return flatOffset;
     }
 
 
     // copy buffer to view into xcontainer
     template<typename T, typename VIEW, typename COORD>
-    inline void copyBufferToViewND(const std::vector<T> & buffer,
-                                   xt::xexpression<VIEW> & viewExperession,
-                                   const COORD & arrayStrides) {
+    inline void copy_buffer_to_view_impl(const std::vector<T> & buffer,
+                                         xt::xexpression<VIEW> & view_expression,
+                                         const COORD & strides) {
         // get the view into the out array and the number of dimension
-        auto & view = viewExperession.derived_cast();
+        auto & view = view_expression.derived_cast();
         const std::size_t dim = view.dimension();
         // buffer size and view shape
-        const std::size_t bufSize = buffer.size();
-        const auto & viewShape = view.shape();
+        const std::size_t buffer_size = buffer.size();
+        const auto & view_shape = view.shape();
         // initialize the (1d) offset into the buffer and view
-        std::size_t bufferOffset = 0;
-        std::size_t viewOffset = 0;
+        std::size_t buffer_offset = 0;
+        std::size_t view_offset = 0;
         // vector to keep track along the position along each dimension
-        types::ShapeType dimPositions(dim);
+        std::vector<size_t> positions(dim);
         // THIS ASSUMES C-ORDER
         // -> memory is consecutive along the last axis
-        const std::size_t memLen = viewShape[dim - 1];
+        const std::size_t mem_len = view_shape[dim - 1];
 
         // we copy data to consecutive pieces of memory in the view
         // until we have exhausted the buffer
@@ -78,39 +47,39 @@ namespace xt_util {
         // (last dimension is the fastest moving and consecutive in memory)
         for(int d = dim - 2; d >= 0;) {
             // copy the piece of buffer that is consectuve to our view
-            std::copy(buffer.begin() + bufferOffset,
-                      buffer.begin() + bufferOffset + memLen,
-                      &view(0) + viewOffset);
+            std::copy(buffer.begin() + buffer_offset,
+                      buffer.begin() + buffer_offset + mem_len,
+                      &view(0) + view_offset);
 
             // increase the buffer offset by what we have just written to the view
-            bufferOffset += memLen;
+            buffer_offset += mem_len;
             // increase the view offsets by the strides along the second from last dimension
-            viewOffset += arrayStrides[dim - 2];
+            view_offset += strides[dim - 2];
 
             // check if we need to decrease the dimension
             for(d = dim - 2; d >= 0; --d) {
                 // increase the position in the current dimension
-                dimPositions[d] += 1;
+                positions[d] += 1;
 
                 // if we are smaller than the shape in this dimension, stay in this dimension
                 // (i.e. break and go back to the copy loop)
-                if(dimPositions[d] < viewShape[d]) {
+                if(positions[d] < view_shape[d]) {
                     break;
                 // otherwise, decrease the dimension
                 } else {
 
                     // reset the position in this dimension
-                    dimPositions[d] = 0;
+                    positions[d] = 0;
 
                     // we don't need to increase the view offset if we are at
                     // the end of the next lower dim !
                     if(d > 0) {
-                        if(dimPositions[d - 1] + 1 == viewShape[d - 1]) {
+                        if(positions[d - 1] + 1 == view_shape[d - 1]) {
                             continue;
                         }
                     }
 
-                    // increase the viewOffset to jump to the next point in memory
+                    // increase the view_offset to jump to the next point in memory
                     // for this, we increase by the stride of the next lower dimension
                     // but need to correct to jump back to the front of the view
                     // in that dimension
@@ -120,14 +89,14 @@ namespace xt_util {
                         // in the next dim
                         std::size_t correction = 0;
                         for(int dd = dim - 2; dd >= d; --dd) {
-                            correction += arrayStrides[dd] * (viewShape[dd] - 1);
+                            correction += strides[dd] * (view_shape[dd] - 1);
                         }
                         // further correction because we incremented
                         // one time to much
-                        correction += arrayStrides[dim - 2];
+                        correction += strides[dim - 2];
 
                         // increase the view offset
-                        viewOffset += (arrayStrides[d - 1] - correction);
+                        view_offset += (strides[d - 1] - correction);
                     }
                 }
             }
@@ -135,41 +104,41 @@ namespace xt_util {
     }
 
 
-    // TODO this only works for row-major (C) memory layout
+    // TODO implement for F order
     template<typename T, typename VIEW, typename COORD>
-    inline void copyBufferToView(const std::vector<T> & buffer,
-                                 xt::xexpression<VIEW> & viewExperession,
-                                 const COORD & arrayStrides) {
-        auto & view = viewExperession.derived_cast();
+    inline void copy_buffer_to_view(const std::vector<T> & buffer,
+                                    xt::xexpression<VIEW> & view_expression,
+                                    const COORD & strides) {
+        auto & view = view_expression.derived_cast();
         // ND impl doesn't work for 1D
         if(view.dimension() == 1) {
             // std::copy(buffer.begin(), buffer.end(), view.begin());
-            const auto bufferView = xt::adapt(buffer, view.shape());
-            view = bufferView;
+            const auto buffer_view = xt::adapt(buffer, view.shape());
+            view = buffer_view;
         } else {
-            copyBufferToViewND(buffer, viewExperession, arrayStrides);
+            copy_buffer_to_view_impl(buffer, view_expression, strides);
         }
     }
 
 
     template<typename T, typename VIEW, typename COORD>
-    inline void copyViewToBufferND(const xt::xexpression<VIEW> & viewExperession,
-                                  std::vector<T> & buffer,
-                                  const COORD & arrayStrides) {
+    inline void copy_view_to_buffer_impl(const xt::xexpression<VIEW> & view_expression,
+                                         std::vector<T> & buffer,
+                                         const COORD & strides) {
         // get the view into the out array and the number of dimension
-        const auto & view = viewExperession.derived_cast();
+        const auto & view = view_expression.derived_cast();
         const std::size_t dim = view.dimension();
         // buffer size and view shape
-        const std::size_t bufSize = buffer.size();
-        const auto & viewShape = view.shape();
+        const std::size_t buffer_size = buffer.size();
+        const auto & view_shape = view.shape();
         // initialize the (1d) offset into the buffer and view
-        std::size_t bufferOffset = 0;
-        std::size_t viewOffset = 0;
+        std::size_t buffer_offset = 0;
+        std::size_t view_offset = 0;
         // vector to keep track along the position along each dimension
-        types::ShapeType dimPositions(dim);
+        std::vector<size_t> positions(dim);
         // THIS ASSUMES C-ORDER
         // -> memory is consecutive along the last axis
-        const std::size_t memLen = viewShape[dim - 1];
+        const std::size_t mem_len = view_shape[dim - 1];
 
         // we copy data that is consecutive in the view to the buffer
         // until we have exhausted the iew
@@ -178,39 +147,39 @@ namespace xt_util {
         // (last dimension is the fastest moving and consecutive in memory)
         for(int d = dim - 2; d >= 0;) {
             // copy the piece of buffer that is consectuve to our view
-            std::copy(&view(0) + viewOffset,
-                      &view(0) + viewOffset + memLen,
-                      buffer.begin() + bufferOffset);
+            std::copy(&view(0) + view_offset,
+                      &view(0) + view_offset + mem_len,
+                      buffer.begin() + buffer_offset);
 
             // increase the buffer offset by what we have just written to the view
-            bufferOffset += memLen;
+            buffer_offset += mem_len;
             // increase the view offsets by the strides along the second from last dimension
-            viewOffset += arrayStrides[dim - 2];
+            view_offset += strides[dim - 2];
 
             // check if we need to decrease the dimension
             for(d = dim - 2; d >= 0; --d) {
                 // increase the position in the current dimension
-                dimPositions[d] += 1;
+                positions[d] += 1;
 
                 // if we are smaller than the shape in this dimension, stay in this dimension
                 // (i.e. break and go back to the copy loop)
-                if(dimPositions[d] < viewShape[d]) {
+                if(positions[d] < view_shape[d]) {
                     break;
                 // otherwise, decrease the dimension
                 } else {
 
                     // reset the position in this dimension
-                    dimPositions[d] = 0;
+                    positions[d] = 0;
 
                     // we don't need to increase the view offset if we are at
                     // the end of the next lower dim !
                     if(d > 0) {
-                        if(dimPositions[d - 1] + 1 == viewShape[d - 1]) {
+                        if(positions[d - 1] + 1 == view_shape[d - 1]) {
                             continue;
                         }
                     }
 
-                    // increase the viewOffset to jump to the next point in memory
+                    // increase the view_offset to jump to the next point in memory
                     // for this, we increase by the stride of the next lower dimension
                     // but need to correct to jump back to the front of the view
                     // in that dimension
@@ -220,14 +189,14 @@ namespace xt_util {
                         // in the next dim
                         std::size_t correction = 0;
                         for(int dd = dim - 2; dd >= d; --dd) {
-                            correction += arrayStrides[dd] * (viewShape[dd] - 1);
+                            correction += strides[dd] * (view_shape[dd] - 1);
                         }
-                        // further correction because we incremented 
+                        // further correction because we incremented
                         // one time to much
-                        correction += arrayStrides[dim - 2];
+                        correction += strides[dim - 2];
 
                         // increase the view offset
-                        viewOffset += (arrayStrides[d - 1] - correction);
+                        view_offset += (strides[d - 1] - correction);
                     }
                 }
             }
@@ -235,20 +204,20 @@ namespace xt_util {
     }
 
 
-    // TODO this only works for row-major (C) memory layout
+    // TODO implement for F order
     template<typename T, typename VIEW, typename COORD>
-    inline void copyViewToBuffer(const xt::xexpression<VIEW> & viewExperession,
-                                 std::vector<T> & buffer,
-                                 const COORD & arrayStrides) {
-        const auto & view = viewExperession.derived_cast();
-        // can't use the ND implementation in 1d, hence we resort to xtensor
+    inline void copy_view_to_buffer(const xt::xexpression<VIEW> & view_expression,
+                                    std::vector<T> & buffer,
+                                    const COORD & strides) {
+        const auto & view = view_expression.derived_cast();
+        // can't use the ND implementation in 1d, hence we resort to xtensor adapt
         // which should be fine in 1D
         if(view.dimension() == 1) {
             // std::copy(view.begin(), view.end(), buffer.begin());
-            auto bufferView = xt::adapt(buffer, view.shape());
-            bufferView = view;
+            auto buffer_view = xt::adapt(buffer, view.shape());
+            buffer_view = view;
         } else {
-            copyViewToBufferND(viewExperession, buffer, arrayStrides);
+            copy_view_to_buffer_impl(view_expression, buffer, strides);
         }
     }
 
