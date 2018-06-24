@@ -5,6 +5,17 @@
 #include "xtensor/xstrided_view.hpp"
 
 
+// overload ostream operator for xindex
+inline std::ostream & operator << (std::ostream & os, const xt::xindex & coord) {
+    os << "xindex(";
+    for(const auto & cc: coord) {
+        os << " " << cc;
+    }
+    os << " )";
+    return os;
+}
+
+
 namespace xt_util {
 
 
@@ -224,14 +235,14 @@ namespace xt_util {
 
     template<typename COORD, typename F>
     inline void for_each_coordinate_c(const COORD & shape, F && f) {
-        const unsigned dim = shape.size();
+        const int dim = shape.size();
         xt::xindex coord(dim);
         std::fill(coord.begin(), coord.end(), 0);
 
         // C-Order: last dimension is the fastest moving one
-        for(unsigned d = dim - 1; d >= 0;) {
+        for(int d = dim - 1; d >= 0;) {
             f(coord);
-            for(unsigned d = dim - 1; d >= 0; --d) {
+            for(d = dim - 1; d >= 0; --d) {
                 ++coord[d];
                 if(coord[d] < shape[d]) {
                     break;
@@ -245,14 +256,14 @@ namespace xt_util {
 
     template<typename COORD, typename F>
     inline void for_each_coordinate_f(const COORD & shape, F && f) {
-        const unsigned dim = shape.size();
+        const int dim = shape.size();
         xt::xindex coord(dim);
         std::fill(coord.begin(), coord.end(), 0);
 
         // F-Order: last dimension is the fastest moving one
-        for(unsigned d = 0; d < dim;) {
+        for(int d = 0; d < dim;) {
             f(coord);
-            for(unsigned d = 0; d < dim; ++d) {
+            for(d = 0; d < dim; ++d) {
                 ++coord[d];
                 if(coord[d] < shape[d]) {
                     break;
@@ -272,4 +283,5 @@ namespace xt_util {
             for_each_coordinate_f(shape, f);
         }
     }
+
 }
